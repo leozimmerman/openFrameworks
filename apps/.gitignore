@@ -18,6 +18,7 @@
 # added
 
 !myApps/
+!OF_debug_notes.md
 
 .svn/
 obj/
