@@ -524,7 +524,9 @@ void ofFbo::createAndAttachTexture(GLenum internalFormat, GLenum attachmentPoint
 	
 	settings.colorFormats.resize(attachmentPoint + 1);
 	settings.colorFormats[attachmentPoint] = internalFormat;
-	settings.numColorbuffers = settings.colorFormats.size();
+   
+    ///**FIX TO MAKE OFX GPU PARTICLES WORK
+	///settings.numColorbuffers = settings.colorFormats.size();
 
 
 	// if MSAA, bind main fbo and attach renderbuffer
