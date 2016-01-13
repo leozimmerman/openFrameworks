@@ -17,7 +17,7 @@
 
 # added
 
-!myApps/
+myApps/*
 !OF_debug_notes.md
 
 .svn/
