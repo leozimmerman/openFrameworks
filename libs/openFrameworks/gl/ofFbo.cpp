@@ -865,6 +865,7 @@ void ofFbo::setActiveDrawBuffer(int i){
 void ofFbo::setActiveDrawBuffers(const vector<int>& ids){
 	if(!bIsAllocated) return;
 #ifndef TARGET_OPENGLES
+	if(activeDrawBuffers.size()){//myTweak for myGpuParticles 
     int numBuffers = activeDrawBuffers.size();
 	activeDrawBuffers.clear();
 	activeDrawBuffers.resize(numBuffers, GL_NONE); // we initialise the vector with GL_NONE, so a buffer will not be written to unless activated.
@@ -879,6 +880,7 @@ void ofFbo::setActiveDrawBuffers(const vector<int>& ids){
         }
     }
     glDrawBuffers(activeDrawBuffers.size(),&activeDrawBuffers[0]);
+	}
 #endif
 }
 
