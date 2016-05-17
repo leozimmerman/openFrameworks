@@ -4,7 +4,7 @@
 
 # include official directories
 !projectGenerator/
-!devApps/
+devApps/
 
 # ignore bin folders' contents, except data folder therein
 /devApps/*/bin/*
@@ -16,4 +16,3 @@
 
 # don't ignore the .gitignore file
 !.gitignore
-
