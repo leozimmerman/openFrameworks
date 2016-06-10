@@ -467,12 +467,28 @@ ofVec3f ofNode::getGlobalScale() const {
 
 //----------------------------------------
 void ofNode::orbit(float longitude, float latitude, float radius, const ofVec3f& centerPoint) {
-	ofQuaternion q(latitude, ofVec3f(1,0,0), longitude, ofVec3f(0,1,0), 0, ofVec3f(0,0,1));
-	setPosition((ofVec3f(0,0,radius)-centerPoint)*q +centerPoint);
-	setOrientation(q);
-	onOrientationChanged();
-	onPositionChanged();
-//	lookAt(centerPoint);//, v - centerPoint);
+	
+	//0.9 version--------
+	
+//	ofQuaternion q(latitude, ofVec3f(1,0,0), longitude, ofVec3f(0,1,0), 0, ofVec3f(0,0,1));
+//	setPosition((ofVec3f(0,0,radius)-centerPoint)*q +centerPoint);
+//	setOrientation(q);
+//	onOrientationChanged();
+//	onPositionChanged();
+
+	
+	
+	//0.8.0 version--- works with Flexibilia
+	ofMatrix4x4 m;
+	
+	// find position
+	ofVec3f p(0, 0, radius);
+	p.rotate(ofClamp(latitude, -89, 89), ofVec3f(1, 0, 0));
+	p.rotate(longitude, ofVec3f(0, 1, 0));
+	p += centerPoint;
+	setPosition(p);
+	
+	lookAt(centerPoint);//, v - centerPoint);
 }
 
 //----------------------------------------
