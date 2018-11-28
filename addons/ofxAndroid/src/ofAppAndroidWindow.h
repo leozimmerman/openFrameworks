@@ -11,7 +11,6 @@
 #include "ofEvents.h"
 #include "ofConstants.h"
 #include "ofTypes.h"
-#include "ofBaseTypes.h"
 
 class ofAppAndroidWindow: public ofAppBaseGLESWindow {
 public:
@@ -23,6 +22,7 @@ public:
 	static bool needsPolling(){ return false; }
 	static void pollEvents(){}
 	static bool allowsMultiWindow(){ return false; }
+	static bool isSurfaceDestroyed();
 
     using ofAppBaseWindow::setup;
 	void setup(const ofGLESWindowSettings & settings);
@@ -35,16 +35,16 @@ public:
 	void	setWindowPosition(int x, int y) {}
 	void	setWindowShape(int w, int h) {}
 
-	ofPoint	getWindowPosition() {return ofPoint(); }
-	ofPoint	getWindowSize();
-	ofPoint	getScreenSize(){return getWindowSize(); }
+	glm::vec2	getWindowPosition() {return glm::vec2(); }
+	glm::vec2	getWindowSize();
+	glm::vec2	getScreenSize(){return getWindowSize(); }
 
 	int		getWidth();
 	int		getHeight();
 
 	bool	doesHWOrientation(){return true;}
 
-	void	setWindowTitle(string title){}
+	void	setWindowTitle(std::string title){}
 
 	ofWindowMode	getWindowMode() {return OF_WINDOW;}
 
@@ -58,13 +58,15 @@ public:
 	ofOrientation	getOrientation();
 
 	ofCoreEvents & events();
-	shared_ptr<ofBaseRenderer> & renderer();
+	std::shared_ptr<ofBaseRenderer> & renderer();
 
 	void	setThreadedEvents(bool threadedEvents);
 	void 	setAccumulateTouchEvents(bool accumEvents);
 
+	int 	getGlesVersion();
+
 private:
 	ofCoreEvents coreEvents;
-	shared_ptr<ofBaseRenderer> currentRenderer;
+	std::shared_ptr<ofBaseRenderer> currentRenderer;
 	int glesVersion;
 };

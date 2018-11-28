@@ -1,3 +1,95 @@
+var Process = require("qbs.Process");
+var File = require("qbs.File");
+var TextFile = require("qbs.TextFile");
+var Environment = require("qbs.Environment");
+var FileInfo = require("qbs.FileInfo");
+
+function findCommand(){
+    // check if it's unix
+    if(File.exists("/usr/bin/find")){
+        return "/usr/bin/find";
+    }
+
+    // else msys2, search unix find command
+    var where = new Process();
+    where.exec("where.exe", ['find'], true);
+    if(where.exitCode()!==0){
+        console.info("PATH: " + where.getEnv("PATH"));
+        throw("error: There is a problem to detect the 'find' command:\n" + where.readStdOut() + "\n" + where.readStdErr());
+    }
+
+
+    while(true){
+        var line = where.readLine();
+        if(line!=="" && line!==undefined){
+            var findPos = line.indexOf("usr\\bin\\find.exe");
+            if (findPos > -1){
+                return line;
+            }
+        }else{
+            break;
+        }
+    }
+
+    console.info("PATH: " + where.getEnv("PATH"));
+    throw("Couldn't find gnu find, you probably need to set a correct path as explained in the openFrameworks setup guide: http://openframeworks.cc/setup/msys2/");
+}
+
+function windowsToUnix(path){
+    var cygpath = new Process();
+    cygpath.exec("cygpath.exe", [path], true);
+    return cygpath.readLine();
+}
+
+function getSystemPath(){
+    return Environment.getEnv("PATH");
+}
+
+function msys2root(){
+    var msys2 = "";
+	var systemPath = Environment.getEnv("PATH");
+	if(systemPath === undefined){
+        console.error("PATH is not defined")
+        return msys2;
+	}
+	
+	var where = new Process();
+    where.exec("where.exe", ['find']); 
+    if(where.exitCode()!==0){
+        throw("error: There is a problem to detect the 'find' command.");
+    }
+
+
+    while(true){
+        var line = where.readLine();
+        if(line!=="" && line!==undefined){
+            var findPos = line.indexOf("usr\\bin\\find.exe");
+            if (findPos > -1){
+                msys2 = line.slice(0,findPos);
+                break;
+            }
+        }else{
+            break;
+        }
+    }
+
+	
+    //console.error("PATH=>"+systemPath);
+    msys2 = FileInfo.fromWindowsSeparators(msys2);
+    var usrBin = FileInfo.toWindowsSeparators(FileInfo.joinPaths(msys2, "usr/bin"));
+    var mingw32Bin = FileInfo.toWindowsSeparators(FileInfo.joinPaths(msys2, "mingw32/bin"));
+    var usrPos = systemPath.indexOf(usrBin);
+    var mingw32Pos = systemPath.indexOf(mingw32Bin);
+	
+    if( (usrPos === -1) || (mingw32Pos === -1) || (mingw32Pos > usrPos) ){
+        console.error("PATH="+systemPath);
+		throw("error : your PATH is incorrect. Please make sure that {MSYS2ROOT}\\mingw32\\bin;{MSYS2ROOT}\\usr\\bin is at the beginning of your PATH");
+    }
+	
+	return msys2;
+}
+
+
 function listDir(dir){
     var ls = new Process();
     ls.exec("ls", [dir]);
@@ -22,16 +114,10 @@ function listDirsRecursive(dir){
     }
     var find = new Process();
     var params = [dir,'-type','d'];
-    find.exec("find", params)
+    find.exec(findCommand(), params)
     if(find.exitCode()!==0){
-        find.exec("C:\\msys64\\usr\\bin\\find", params);
-        if(find.exitCode()!==0){
-            find.exec("C:\\msys32\\usr\\bin\\find", params);
-            if(find.exitCode()!==0){
-                var error = find.readStdErr();
-                throw("error: " + error)
-            }
-        }
+		var error = find.readStdErr();
+		throw("error: " + error)
     }
     var line = find.readLine();
     while(line.trim()!==""){
@@ -40,6 +126,17 @@ function listDirsRecursive(dir){
     }
     find.close();
     return(ret)
+}
+
+function hasExtension(str, extension){
+    var suffix = "." + extension;
+    return str.indexOf(suffix, str.length - suffix.length) !== -1;
+}
+
+function pkgExists(pkg){
+    var pkgconfig = new Process();
+    pkgconfig.exec("pkg-config", ["--exists", pkg]);
+    return pkgconfig.exitCode() === 0;
 }
 
 function findLibsRecursive(dir, platform, exclude){
@@ -52,15 +149,46 @@ function findLibsRecursive(dir, platform, exclude){
         if(exclude.indexOf(libs[libdir])!==-1){
             continue;
         }
-        var fullPath = dir + '/' + libs[libdir] + '/lib/' + platform + '/';
+
+        var libpath = dir + '/' + libs[libdir] + '/lib/' + platform + "/"
         var find = new Process();
-        find.exec('ls', [fullPath])
+        find.exec('ls', [libpath])
         var line = find.readLine().trim();
+        var libFiles = [];
         while(line!==""){
-            ret = ret.concat([fullPath + line]);
+            libFiles.push(line);
             line = find.readLine().trim();
         }
         find.close();
+
+        var staticLibs = libFiles.filter(function(lib){
+            return hasExtension(lib, "a");
+        });
+
+        var sharedLibs = libFiles.filter(function(lib){
+            return hasExtension(lib, "so") || hasExtension(lib, "dylib") || hasExtension(lib, "dll");
+        });
+
+        for(var idx in staticLibs){
+            ret.push(libpath + staticLibs[idx])
+        }
+
+        for(var idx in sharedLibs){
+            ret.push(libpath + sharedLibs[idx])
+        }
+
+        /*if(sharedLibs.length>0){
+            ret.push("-L"+libpath);
+        }
+
+        for(var idx in sharedLibs){
+            var lib = sharedLibs[idx];
+            if(lib.indexOf("lib")===0){
+                lib = lib.substr(3);
+            }
+            lib = lib.split(".")[0];
+            ret.push("-l" + lib)
+        }*/
     }
     return(ret)
 }
@@ -79,17 +207,15 @@ function findSourceRecursive(dir){
                   ,'-or', '-name', '*.c++'
                   ,'-or', '-name', '*.s'
                   ,'-or', '-name', '*.S'
-                  ,'-or', '-name', '*.c'];
-    find.exec("find", params);
+                  ,'-or', '-name', '*.c'
+                  ,'-or', '-name', '*.inl'
+                  ,'-or', '-name', '*.glsl'
+                  ,'-or', '-name', '*.vert'
+                  ,'-or', '-name', '*.frag'];
+    find.exec(findCommand(), params);
     if(find.exitCode()!==0){
-        find.exec("C:\\msys64\\usr\\bin\\find", params);
-        if(find.exitCode()!==0){
-            find.exec("C:\\msys32\\usr\\bin\\find", params);
-            if(find.exitCode()!==0){
-                var error = find.readStdErr();
-                throw("error: " + error)
-            }
-        }
+		var error = find.readStdErr();
+		throw("error: " + error)
     }
     var line = find.readLine();
     while(line.trim()!==""){
@@ -119,11 +245,10 @@ function pkgconfig(pkgs,parameters){
 function addonIncludes(addon){
     var includes = listDirsRecursive(addon + '/src')
     try{
-        var libs = Helpers.listDir(addon + '/libs');
+        var libs = listDir(addon + '/libs/');
         var libsIncludes = [];
         for(var lib in libs){
             var libpath = addon + '/libs/' + libs[lib];
-            var include_path = libpath + "/include"
             try{
                 var include_paths = listDirsRecursive(libpath);
                 libsIncludes = libsIncludes.concat(include_paths);
@@ -134,14 +259,14 @@ function addonIncludes(addon){
         }else{
             includes = includes.concat(libsIncludes);
         }
-    }catch(e){}
+    }catch(e){ }
     return includes;
 }
 
 function addonSources(addon){
     var sources = findSourceRecursive(addon + '/src')
     try{
-        sources = sources.concat(Helpers.findSourceRecursive(addon + '/libs'));
+        sources = sources.concat(findSourceRecursive(addon + '/libs'));
     }catch(e){}
     return sources;
 }
@@ -279,3 +404,4 @@ function absOFRoot(){
         return FileInfo.joinPaths(path, project.of_root);
     }
 }
+

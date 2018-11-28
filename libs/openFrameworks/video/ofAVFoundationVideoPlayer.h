@@ -31,7 +31,7 @@ typedef enum _playerLoopType{
 
 
 //---------------------------------------------------------- video player.
-@interface ofAVFoundationVideoPlayer : NSObject <AVPlayerItemOutputPullDelegate> {
+@interface ofAVFoundationVideoPlayer : NSObject {
 	
     AVPlayer * _player;
 	AVAsset * _asset;
@@ -42,9 +42,8 @@ typedef enum _playerLoopType{
 	AVAssetReaderTrackOutput * _assetReaderVideoTrackOutput;
 	AVAssetReaderTrackOutput * _assetReaderAudioTrackOutput;
 	
-#if USE_VIDEO_OUTPUT
+#if defined(USE_VIDEO_OUTPUT)
 	CMVideoFormatDescriptionRef _videoInfo;
-	dispatch_queue_t _myVideoOutputQueue;
 	AVPlayerItemVideoOutput * _videoOutput;
 #endif
 	
@@ -82,6 +81,7 @@ typedef enum _playerLoopType{
     BOOL bSampleVideo; // default to YES
     BOOL bSampleAudio; // default to NO
 	BOOL bIsUnloaded;
+	BOOL bStream;
 	
 	NSLock* asyncLock;
 	NSCondition* deallocCond;
@@ -96,14 +96,14 @@ typedef enum _playerLoopType{
 @property (nonatomic, retain) AVAssetReaderTrackOutput * assetReaderVideoTrackOutput;
 @property (nonatomic, retain) AVAssetReaderTrackOutput * assetReaderAudioTrackOutput;
 
-#if USE_VIDEO_OUTPUT
+#if defined(USE_VIDEO_OUTPUT)
 @property (nonatomic, retain) AVPlayerItemVideoOutput *videoOutput;
 #endif
 
 
 - (BOOL)loadWithFile:(NSString*)file async:(BOOL)bAsync;
 - (BOOL)loadWithPath:(NSString*)path async:(BOOL)bAsync;
-- (BOOL)loadWithURL:(NSURL*)url async:(BOOL)bAsync;
+- (BOOL)loadWithURL:(NSURL*)url async:(BOOL)bAsync stream:(BOOL)isStream;
 - (void)unloadVideoAsync;
 - (void)unloadVideo;
 
@@ -121,6 +121,7 @@ typedef enum _playerLoopType{
 - (void)seekToTime:(CMTime)time withTolerance:(CMTime)tolerance;
 
 - (BOOL)isReady;
+- (BOOL)isLoaded;
 - (BOOL)isPlaying;
 - (BOOL)isNewFrame;
 - (BOOL)isFinished;
@@ -161,5 +162,7 @@ typedef enum _playerLoopType{
 - (BOOL)getAutoplay;
 - (void)setWillBeUpdatedExternally:(BOOL)value;
 - (void)close;
+- (void)setStreaming:(BOOL)value;
+
 
 @end

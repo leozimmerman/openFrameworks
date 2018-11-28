@@ -390,8 +390,8 @@ void  ofxCvImage::drawBlobIntoMe( ofxCvBlob& blob, int color ) {
 	   }
 	   int nPts = blob.nPts;
 	   cvFillPoly( cvImage, &pts, &nPts, 1,
-				   CV_RGB(color,color,color) );
-	   delete pts;
+	               cvScalar(color,color,color) );
+	   delete[] pts;
 	}
 }
 

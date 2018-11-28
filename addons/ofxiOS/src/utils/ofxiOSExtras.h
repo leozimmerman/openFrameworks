@@ -37,14 +37,32 @@
 #pragma once
 
 #import <UIKit/UIKit.h>
+#include <TargetConditionals.h>
 
-#include "ofBaseTypes.h"
 #include "ofxiOSConstants.h"
+#include "ofConstants.h"
+
+enum ofOrientation: short;
+
+class ofTexture;
+
+template<typename T>
+class ofImage_;
+
+typedef ofImage_<unsigned char> ofImage;
 
 class ofAppiOSWindow;
+#if TARGET_OS_IOS || (TARGET_OS_IPHONE && !TARGET_OS_TV)
 @class ofxiOSAppDelegate;
 @class ofxiOSViewController;
+@class ofxiOSGLKViewController;
+#elif TARGET_OS_TV
+@class ofxtvOSAppDelegate;
+@class ofxtvOSViewController;
+@class ofxtvOSGLKViewController;
+#endif
 @class ofxiOSEAGLView;
+@class ofxiOSGLKView;
 
 // this is the new way for getting device info.
 // we can add other parameters later.
@@ -52,7 +70,7 @@ class ofAppiOSWindow;
 class ofxiOSDeviceInfo{
 public:
     ofxiOSDeviceType deviceType;
-    string deviceString;
+    std::string deviceString;
     int versionMajor;
     int versionMinor;
 };
@@ -69,7 +87,7 @@ float ofxiOSGetMicAverageLevel();
 ofxiOSDeviceType ofxiOSGetDeviceType();
 
 // return device revision
-string ofxiOSGetDeviceRevision();
+std::string ofxiOSGetDeviceRevision();
 
 // return device revision and type parsd from string
 ofxiOSDeviceInfo ofxiOSGetDeviceInfo();
@@ -80,17 +98,28 @@ UIWindow * ofxiOSGetUIWindow();
 // return openglview
 ofxiOSEAGLView * ofxiOSGetGLView();
 
+ofxiOSGLKView * ofxiOSGetGLKView();
+
 // return opengl parent view
 UIView * ofxiOSGetGLParentView();
 
 // return OpenFrameworks iPhone Window
 ofAppiOSWindow * ofxiOSGetOFWindow();
 
+#if TARGET_OS_IOS || (TARGET_OS_IPHONE && !TARGET_OS_TV)
 // return application delegate
 ofxiOSAppDelegate * ofxiOSGetAppDelegate();
 
 // return iphone view controller.
 ofxiOSViewController * ofxiOSGetViewController();
+#elif TARGET_OS_TV
+// return application delegate
+ofxtvOSAppDelegate * ofxiOSGetAppDelegate();
+
+// return iphone view controller.
+ofxtvOSViewController * ofxiOSGetViewController();
+#endif
+
 
 // brings the OpenGL view to the front of any other UIViews
 // the OpenGL view will receive touchXXXXX events, but other UIViews will not
@@ -133,10 +162,10 @@ void ofxiOSUnlockGLContext();
 // disabled by default
 void ofxiOSEnableLoopInThread();
 
-
+#if TARGET_OS_IOS || (TARGET_OS_IPHONE && !TARGET_OS_TV)
 OF_DEPRECATED_MSG("ofxiOSSetOrientation is deprecated, use ofSetOrientation instead.", void ofxiOSSetOrientation(ofOrientation orientation));
 OF_DEPRECATED_MSG("ofxiOSGetOrientation is deprecated, use ofGetOrientation instead.", UIDeviceOrientation ofxiOSGetOrientation());
-
+#endif
 
 // load an image from the app bundle into a texture
 // NOTE: renamed this function to something more clearer
@@ -160,23 +189,25 @@ bool ofxiOSUIImageToOFTexture(UIImage * uiImage, ofTexture & outTexture, int tar
 
 bool ofxiOSCGImageToPixels(CGImageRef & ref, unsigned char * pixels);
 
+#if TARGET_OS_IOS || (TARGET_OS_IPHONE && !TARGET_OS_TV)
 // save current opengl screen to photos app
 // based on code from http://www.bit-101.com/blog/?p=1861
 void ofxiOSScreenGrab(id delegate);
+#endif
 
 
 // utility fuctions for converting strings and NSStrings back and forth
-string ofxiOSNSStringToString(NSString * s);
-NSString * ofxiOSStringToNSString(string s);
+std::string ofxiOSNSStringToString(NSString * s);
+NSString * ofxiOSStringToNSString(std::string s);
 
 // It returns the path to the folder which your app has read/write access to.
-string ofxiOSGetDocumentsDirectory();
+std::string ofxiOSGetDocumentsDirectory();
 
 // opens url in safari.
-void ofxiOSLaunchBrowser(string url);
+void ofxiOSLaunchBrowser(std::string url);
 
-void ofxiOSSetClipboardString(string clipboardString);
-string ofxiOSGetClipboardString();
+void ofxiOSSetClipboardString(std::string clipboardString);
+std::string ofxiOSGetClipboardString();
 
 // backwards compatibility < 0.8.0
 #define ofxiPhoneHasAudioIn ofxiOSHasAudioIn

@@ -37,12 +37,19 @@
 #pragma once
 
 #include "ofMain.h"
+
+#ifndef TARGET_OF_TVOS
+
 #include "ofAppiOSWindow.h"
 #include "ofxiOSConstants.h"
 #include "ofxiOSExtensions.h"
 #include "ofxiOSAppDelegate.h"
 #include "ofxiOSViewController.h"
+#include "ofxiOSGLKViewController.h"
+#include "ofxiOSGLKView.h"
 #include "ofxiOSEAGLView.h"
 #include "ofxiOSApp.h"
 #include "ofxiOSExtras.h"
 #include "ofxAccelerometer.h"
+
+#endif

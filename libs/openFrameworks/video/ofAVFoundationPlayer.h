@@ -6,7 +6,7 @@
 
 #pragma once
 
-#include "ofBaseTypes.h"
+#include "ofVideoBaseTypes.h"
 #include "ofPixels.h"
 #include "ofTexture.h"
 #include "ofThread.h"
@@ -26,8 +26,8 @@ public:
 	ofAVFoundationPlayer();
 	~ofAVFoundationPlayer();
 	   
-    bool load(string name);
-	void loadAsync(string name);
+    bool load(std::string name);
+	void loadAsync(std::string name);
     void close();
     void update();
 
@@ -85,15 +85,16 @@ public:
 	void * getAVFoundationVideoPlayer();
 #endif
     
-    OF_DEPRECATED_MSG("ofAVFoundationPlayer::loadMovie() is deprecated, use load() instead.", bool loadMovie(string name));
+    OF_DEPRECATED_MSG("ofAVFoundationPlayer::loadMovie() is deprecated, use load() instead.", bool loadMovie(std::string name));
     OF_DEPRECATED_MSG("ofAVFoundationPlayer::getPixelsRef() is deprecated, use getPixels() instead.", ofPixels & getPixelsRef());
     OF_DEPRECATED_MSG("ofAVFoundationPlayer::getPixelsRef() is deprecated, use getPixels() instead.", const ofPixels & getPixelsRef() const);
     OF_DEPRECATED_MSG("ofAVFoundationPlayer::getTexture() is deprecated, use getTexturePtr() instead.", ofTexture * getTexture());
     
 protected:
 	
-    bool loadPlayer(string name, bool bAsync);
+    bool loadPlayer(std::string name, bool bAsync);
 	void disposePlayer();
+    bool isReady() const;
 
 #ifdef __OBJC__
     ofAVFoundationVideoPlayer * videoPlayer;
@@ -105,7 +106,7 @@ protected:
     bool bResetPixels;
     bool bUpdatePixels;
     bool bUpdateTexture;
-    bool bTextureCacheSupported;
+	bool bUseTextureCache;
 	
     ofPixels pixels;
 	ofPixelFormat pixelFormat;

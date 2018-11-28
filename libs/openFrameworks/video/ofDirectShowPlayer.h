@@ -3,19 +3,26 @@
 //To allow for QuickTime video playback install the K-Lite Mega Codec Pack 10.2
 
 #pragma once 
-#include "ofMain.h"
+#include "ofConstants.h"
+#include "ofVideoBaseTypes.h"
+
+template<typename T>
+class ofPixels_;
+
+typedef ofPixels_<unsigned char> ofPixels;
 
 class DirectShowVideo; 
 
 class ofDirectShowPlayer : public ofBaseVideoPlayer{
     public:
+		ofDirectShowPlayer();
+		ofDirectShowPlayer(const ofDirectShowPlayer&) = delete;
+		ofDirectShowPlayer & operator=(const ofDirectShowPlayer&) = delete;
+		ofDirectShowPlayer(ofDirectShowPlayer &&);
+		ofDirectShowPlayer & operator=(ofDirectShowPlayer&&);
 
-        ofDirectShowPlayer();
-        ~ofDirectShowPlayer();
-
-        bool                load(string path);
+        bool                load(std::string path);
         void                update();
-        void                draw(float x, float y);
 
         void                close();
     
@@ -58,6 +65,6 @@ class ofDirectShowPlayer : public ofBaseVideoPlayer{
         void                previousFrame();
 
     protected:
-        DirectShowVideo *   player; 
-        ofPixels            pix;
+        std::shared_ptr<DirectShowVideo>   player;
+		ofPixelFormat pixelFormat;
 };

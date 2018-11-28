@@ -101,7 +101,7 @@ static inline void unpack_8_pixels(uint8_t *raw, uint16_t *frame)
 }
 
 // apply registration data to a single packed frame
-FN_INTERNAL int freenect_apply_registration(freenect_device* dev, uint8_t* input_packed, uint16_t* output_mm)
+FN_INTERNAL int freenect_apply_registration(freenect_device* dev, uint8_t* input, uint16_t* output_mm, bool unpacked)
 {
 	freenect_registration* reg = &(dev->registration);
 	// set output buffer to zero using pointer-sized memory access (~ 30-40% faster than memset)
@@ -116,15 +116,22 @@ FN_INTERNAL int freenect_apply_registration(freenect_device* dev, uint8_t* input
 	for (y = 0; y < DEPTH_Y_RES; y++) {
 		for (x = 0; x < DEPTH_X_RES; x++) {
 
-			// get 8 pixels from the packed frame
-			if (source_index == 8) {
-				unpack_8_pixels( input_packed, unpack );
-				source_index = 0;
-				input_packed += 11;
-			}
+                        uint16_t metric_depth;
 
-			// get the value at the current depth pixel, convert to millimeters
-			uint16_t metric_depth = reg->raw_to_mm_shift[ unpack[source_index++] ];
+                        if (unpacked) {
+                                uint32_t buf_index = y * DEPTH_X_RES + x;
+                                metric_depth = reg->raw_to_mm_shift[((uint16_t *)input)[buf_index]];
+                        } else {
+                                // get 8 pixels from the packed frame
+                                if (source_index == 8) {
+                                        unpack_8_pixels( input, unpack );
+                                        source_index = 0;
+                                        input += 11;
+                                }
+
+                                // get the value at the current depth pixel, convert to millimeters
+                                metric_depth = reg->raw_to_mm_shift[ unpack[source_index++] ];
+                        }
 
 			// so long as the current pixel has a depth value
 			if (metric_depth == DEPTH_NO_MM_VALUE) continue;
@@ -185,6 +192,22 @@ FN_INTERNAL int freenect_apply_depth_to_mm(freenect_device* dev, uint8_t* input_
 			// get the value at the current depth pixel, convert to millimeters
 			uint16_t metric_depth = reg->raw_to_mm_shift[ unpack[source_index++] ];
 			output_mm[y * DEPTH_X_RES + x] = metric_depth < DEPTH_MAX_METRIC_VALUE ? metric_depth : DEPTH_MAX_METRIC_VALUE;
+		}
+	}
+	return 0;
+}
+
+// Same as freenect_apply_depth_to_mm, but don't need to unpack 11 bit depth values
+FN_INTERNAL int freenect_apply_depth_unpacked_to_mm(freenect_device* dev, uint16_t* input, uint16_t* output_mm)
+{
+	freenect_registration* reg = &(dev->registration);
+	uint32_t x,y;
+	for (y = 0; y < DEPTH_Y_RES; y++) {
+		for (x = 0; x < DEPTH_X_RES; x++) {
+			// get the value at the current depth pixel, convert to millimeters
+			uint32_t buf_index = y * DEPTH_X_RES + x;
+			uint16_t metric_depth = reg->raw_to_mm_shift[input[buf_index]];
+			output_mm[buf_index] = metric_depth < DEPTH_MAX_METRIC_VALUE ? metric_depth : DEPTH_MAX_METRIC_VALUE;
 		}
 	}
 	return 0;
@@ -327,6 +350,73 @@ void freenect_camera_to_world(freenect_device* dev, int cx, int cy, int wz, doub
 	double factor = 2 * ref_pix_size * wz / ref_distance;
 	*wx = (double)(cx - DEPTH_X_RES/2) * factor;
 	*wy = (double)(cy - DEPTH_Y_RES/2) * factor;
+}
+
+/// RGB -> depth mapping function (inverse of default FREENECT_DEPTH_REGISTERED mapping)
+void freenect_map_rgb_to_depth(freenect_device* dev, uint16_t* depth_mm, uint8_t* rgb_raw, uint8_t* rgb_registered)
+{
+	uint32_t target_offset = dev->registration.reg_pad_info.start_lines * DEPTH_Y_RES;
+	int x,y;
+	int* map = (int*)malloc(DEPTH_Y_RES*DEPTH_X_RES* sizeof(int));
+	unsigned short* zBuffer = (unsigned short*)malloc(DEPTH_Y_RES*DEPTH_X_RES* sizeof(unsigned short));
+	memset(zBuffer, DEPTH_NO_MM_VALUE, DEPTH_X_RES*DEPTH_Y_RES * sizeof(unsigned short));
+
+	for (y = 0; y < DEPTH_Y_RES; y++) for (x = 0; x < DEPTH_X_RES; x++) {
+		uint32_t index = y * DEPTH_X_RES + x;
+		uint32_t cx,cy,cindex;
+
+		map[index] = -1;
+
+		int wz = depth_mm[index];
+
+		if (wz == DEPTH_NO_MM_VALUE) {
+			continue;
+		}
+
+		// coordinates in rgb image corresponding to x,y in depth image
+		cx = (dev->registration.registration_table[index][0] + dev->registration.depth_to_rgb_shift[wz]) / REG_X_VAL_SCALE;
+		cy =  dev->registration.registration_table[index][1] - target_offset;
+
+		if (cx >= DEPTH_X_RES) continue;
+
+		cindex = cy*DEPTH_X_RES+cx;
+		map[index] = cindex;
+
+		if (zBuffer[cindex] == DEPTH_NO_MM_VALUE || zBuffer[cindex] > wz) {
+			zBuffer[cindex] = wz;
+		}
+	}
+
+	for (y = 0; y < DEPTH_Y_RES; y++) for (x = 0; x < DEPTH_X_RES; x++) {
+		uint32_t index = y * DEPTH_X_RES + x;
+		uint32_t cindex = map[index];
+
+		// pixels without depth data or out of bounds are black
+		if (cindex == -1) {
+			index *= 3;
+			rgb_registered[index+0] = 0;
+			rgb_registered[index+1] = 0;
+			rgb_registered[index+2] = 0;
+
+			continue;
+		}
+
+		unsigned short currentDepth = depth_mm[index];
+		unsigned short minDepth = zBuffer[cindex];
+
+		// filters out pixels that are occluded
+		if (currentDepth <= minDepth) {
+			index *= 3;
+			cindex *= 3;
+
+			rgb_registered[index+0] = rgb_raw[cindex+0];
+			rgb_registered[index+1] = rgb_raw[cindex+1];
+			rgb_registered[index+2] = rgb_raw[cindex+2];
+		}
+	}
+
+	free(zBuffer);
+	free(map);
 }
 
 /// Allocate and fill registration tables

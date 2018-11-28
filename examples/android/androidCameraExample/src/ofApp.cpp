@@ -12,91 +12,110 @@ void ofApp::setup(){
 		ofLog()<<"Device "<<i<<": "<<devices[i].deviceName;
 	}
 
-	// Set the pixel format for getPixels to monochrome
-	// (other image formats will include heavy pixel conversion)
-	grabber.setPixelFormat(OF_PIXELS_MONO);
+	// Set the pixel format for getPixels to grayscale
+	// (other image formats will include heavy colorspace conversion)
+	grabber.setPixelFormat(OF_PIXELS_GRAY)
 
 	// Hint the grabber if you don't need pixel data for better performance
 	//((ofxAndroidVideoGrabber*)grabber.getGrabber().get())->setUsePixels(false);
 
 	// Start the grabber
-	grabber.setup(1280,960);
+	grabber.setup(1280, 720);
 
-	// Get the orientation and facing of the current camera
-	orientation = ((ofxAndroidVideoGrabber*)grabber.getGrabber().get())->getCameraOrientation();
-	facing = ((ofxAndroidVideoGrabber*)grabber.getGrabber().get())->getFacingOfCamera();
-
-	one_second_time = ofGetElapsedTimeMillis();
-	camera_fps = 0;
-	frames_one_sec = 0;
+    if(grabber.isInitialized()) {
+        // Get the orientation and facing of the current camera
+        cameraOrientation = ((ofxAndroidVideoGrabber *) grabber.getGrabber().get())->getCameraOrientation();
+        cameraFacingFront = ((ofxAndroidVideoGrabber *) grabber.getGrabber().get())->getFacingOfCamera();
+    }
 }
 
 //--------------------------------------------------------------
 void ofApp::update(){
 	grabber.update();
 	if(grabber.isFrameNew()){
-		frames_one_sec++;
-		if( ofGetElapsedTimeMillis() - one_second_time >= 1000){
-			camera_fps = frames_one_sec;
-			frames_one_sec = 0;
-			one_second_time = ofGetElapsedTimeMillis();
-		}
+		cameraFps.newFrame();
 
-		grabberImage.setFromPixels(grabber.getPixels());
+		grabberImage.loadData(grabber.getPixels());
 	}
+	cameraFps.update();
 }
 
 //--------------------------------------------------------------
-void ofApp::draw(){    
+void ofApp::draw(){
 	// Calculate aspect ratio of grabber image
 	float grabberAspectRatio = grabber.getWidth() / grabber.getHeight();
 
 	// Draw camera image centered in the window
 	ofPushMatrix();
-	ofSetHexColor(0xFFFFFF);
+	ofSetColor(255);
 	ofSetRectMode(OF_RECTMODE_CENTER);
 
+	// Draw from the center of the window
 	ofTranslate(ofGetWidth() / 2, ofGetHeight() / 2);
 
-	int wOrientation = ofOrientationToDegrees(ofGetOrientation());
-	ofLogNotice()<<"Orientation: "<<ofGetOrientation()<<endl;
-
-	if(ofGetWidth() > ofGetHeight()) {
-		grabber.draw(0,0, ofGetHeight() * grabberAspectRatio,
-					 ofGetHeight());
+	if(cameraFacingFront) {
+		// If the camera is front, then rotate clockwise
+		ofRotateDeg(appOrientation);
 	} else {
-		grabber.draw(0,0, ofGetWidth(),
-					 ofGetWidth()  * 1.0/grabberAspectRatio);
-
+		// If the camera is backfacing, then rotate counter clockwise
+		ofRotateDeg(-appOrientation);
 	}
+
+	// Rotate the cameras orientation offset
+	ofRotateDeg(cameraOrientation);
+
+	int width = ofGetWidth();
+	int height = ofGetHeight();
+
+	// If its landscape mode, then swap width and height
+	if(appOrientation == 90 || appOrientation == 270){
+		std::swap(width, height);
+	}
+
+	// Draw the image
+	if(width < height) {
+		grabber.draw(0,0, width * grabberAspectRatio,
+					 width);
+	} else {
+		grabber.draw(0,0, height,
+					 height * 1.0/grabberAspectRatio);
+	}
+
 	ofPopMatrix();
 	ofSetRectMode(OF_RECTMODE_CORNER);
 
-	// Draw the image through raw pixels
-	grabberImage.draw(0,110, 300, 300*1.0/grabberAspectRatio);
-
 	// Draw text gui
-	ofDrawRectangle(0, 0, 300, 100);
-	ofSetHexColor(0x000000);
+	ofDrawRectangle(0, 0, 300, 120);
+	ofSetColor(0);
 	ofDrawBitmapString("fps: " + ofToString(ofGetFrameRate()),20,20);
-	ofDrawBitmapString("camera fps: " + ofToString(camera_fps),20,40);
+	ofDrawBitmapString("camera fps: " + ofToString(cameraFps.getFps()),20,40);
 
-	if(facing == 1) {
-		ofDrawBitmapString("facing: front", 20, 60);
+	if(cameraFacingFront) {
+		ofDrawBitmapString("facing: front (click to swap)", 20, 60);
 	}  else {
-		ofDrawBitmapString("facing: back", 20, 60);
+		ofDrawBitmapString("facing: back (click to swap)", 20, 60);
 	}
-	ofDrawBitmapString("orientation: " + ofToString(orientation) ,20,80);
+	ofDrawBitmapString("camera orientation: " + ofToString(cameraOrientation) ,20,80);
+	ofDrawBitmapString("app orientation: " + ofToString(appOrientation) ,20,100);
+
+	// Draw the image through raw pixels
+	ofSetColor(255);
+	ofDrawRectangle(0, 130, 300, 20);
+	ofSetColor(0);
+	ofDrawBitmapString("raw pixel data" ,20,143);
+
+	ofSetColor(255);
+	grabberImage.draw(0,150, 300, 300*1.0/grabberAspectRatio);
 }
 
 //--------------------------------------------------------------
-void ofApp::keyPressed  (int key){ 
-	
+void ofApp::keyPressed  (int key){
+
 }
 
 //--------------------------------------------------------------
-void ofApp::keyReleased(int key){ 
-	
+void ofApp::keyReleased(int key){
+
 }
 
 //--------------------------------------------------------------
@@ -112,15 +131,19 @@ void ofApp::touchDown(int x, int y, int id){
 	ofxAndroidVideoGrabber* androidGrabber = (ofxAndroidVideoGrabber*)grabber.getGrabber().get();
 
 	// If the current camera is frontal, then choose the back camera
-	if(facing == 1) {
+	if(cameraFacingFront) {
 		androidGrabber->setDeviceID(androidGrabber->getBackCamera());
 	} else {
 		androidGrabber->setDeviceID(androidGrabber->getFrontCamera());
 	}
 
 	// Read current orientation and facing out again
-	orientation = androidGrabber->getCameraOrientation();
-	facing = androidGrabber->getFacingOfCamera();
+	cameraOrientation = androidGrabber->getCameraOrientation();
+	cameraFacingFront = androidGrabber->getFacingOfCamera();
+}
+
+void ofApp::deviceOrientationChanged(ofOrientation newOrientation){
+	appOrientation = ofOrientationToDegrees(newOrientation);
 }
 
 //--------------------------------------------------------------

@@ -11,9 +11,12 @@
 #include "ofUtils.h"
 #include "ofxAndroidUtils.h"
 #include "ofAppRunner.h"
+#include "ofLog.h"
 #include <deque>
 #include <set>
 #include <jni.h>
+
+using namespace std;
 
 // Global pointer used to implement the singletomn pattern for ofxAndroidSoundStream class
 static ofxAndroidSoundStream* instance = NULL;
@@ -22,12 +25,8 @@ static bool headphonesConnected = false;
 ofxAndroidSoundStream::ofxAndroidSoundStream(){
 	out_buffer = NULL;
 	in_buffer = NULL;
-	
-	soundInputPtr = NULL;
-	soundOutputPtr = NULL;
 
 	isPaused = false;
-	requestedBufferSize = 256;
 	totalOutRequestedBufferSize = totalInRequestedBufferSize = 0;
 	tickCount = 0;
 	headphonesConnected = false;
@@ -45,7 +44,7 @@ ofxAndroidSoundStream::~ofxAndroidSoundStream(){
 	ofRemoveListener(ofxAndroidEvents().resume,this,&ofxAndroidSoundStream::resume);
 }
 
-vector<ofSoundDevice> ofxAndroidSoundStream::getDeviceList() const{
+std::vector<ofSoundDevice> ofxAndroidSoundStream::getDeviceList(ofSoundDevice::Api api) const{
     ofLogWarning("ofxAndroidSoundStream") << "getDeviceList() isn't implemented on android";
     return vector<ofSoundDevice>();
 }
@@ -55,35 +54,35 @@ void ofxAndroidSoundStream::setDeviceID(int deviceID){
 }
 
 void ofxAndroidSoundStream::setInput(ofBaseSoundInput * _soundInput){
-	soundInputPtr = _soundInput;
+	settings.setInListener(_soundInput);
 }
 
 void ofxAndroidSoundStream::setOutput(ofBaseSoundOutput * _soundOutput){
-	soundOutputPtr = _soundOutput;
+    settings.setOutListener(_soundOutput);
 }
 
-bool ofxAndroidSoundStream::setup(int outChannels, int inChannels, int sampleRate, int bufferSize, int nBuffers){
+bool ofxAndroidSoundStream::setup(const ofSoundStreamSettings & settings){
 	if(instance!=NULL && instance!=this){
 		ofLogError("ofxAndroidSoundStream") << "setup(): multiple instances detected, only one instance allowed";
 		return false;
 	}
 
 	// Find the minimum input buffer size allowed by the Android device
-	int input_buffer_size = inChannels*getMinInBufferSize(sampleRate,inChannels) * 2;
+	int input_buffer_size = settings.numInputChannels*getMinInBufferSize(settings.sampleRate,settings.numInputChannels) * 2;
 	// setup size of input circular-buffer
 	input_buffer.setup(input_buffer_size,0);
 	
 	// deallocate and reallocate if setup() is called more than once
-	in_float_buffer.allocate(bufferSize,inChannels);
-	in_float_buffer.setSampleRate(sampleRate);
-	out_float_buffer.allocate(bufferSize,outChannels);
-	out_float_buffer.setSampleRate(sampleRate);
+	in_float_buffer.allocate(settings.bufferSize,settings.numInputChannels);
+	in_float_buffer.setSampleRate(settings.sampleRate);
+	out_float_buffer.allocate(settings.bufferSize,settings.numOutputChannels);
+	out_float_buffer.setSampleRate(settings.sampleRate);
 
 	tickCount = 0;
 
-	requestedBufferSize = bufferSize;
-	totalOutRequestedBufferSize = bufferSize*outChannels;
-	totalInRequestedBufferSize = bufferSize*inChannels;
+	totalOutRequestedBufferSize = settings.bufferSize*settings.numOutputChannels;
+	totalInRequestedBufferSize = settings.bufferSize*settings.numInputChannels;
+    this->settings = settings;
 
 	// JNI: Try to find and call OFAndroidSoundStream.getInstance().setup(outChannels,inChannels,sampleRate,bufferSize,nBuffers)
 	if(!ofGetJavaVMPtr()){
@@ -110,11 +109,11 @@ bool ofxAndroidSoundStream::setup(int outChannels, int inChannels, int sampleRat
 	jobject javaObject = env->CallStaticObjectMethod(javaClass,soundStreamSingleton);
 	jmethodID javaSetup = env->GetMethodID(javaClass,"setup","(IIIII)V");
 	// call setup()
-	if(javaObject && javaSetup)
-		env->CallVoidMethod(javaObject,javaSetup,outChannels,inChannels,sampleRate,bufferSize,nBuffers);
-	else
+	if(javaObject && javaSetup){
+		env->CallVoidMethod(javaObject,javaSetup,settings.numOutputChannels,settings.numInputChannels,settings.sampleRate,settings.bufferSize,settings.numBuffers);
+	}else{
 		ofLogError("ofxAndroidSoundStream") << "setup(): couldn't get OFAndroidSoundStream instance or setup method";
-
+	}
 	// Store instance pointer to ofxAndroidSoundStream (singleton pattern)
 	instance = this;
 	isPaused = false;
@@ -122,19 +121,11 @@ bool ofxAndroidSoundStream::setup(int outChannels, int inChannels, int sampleRat
 	return true;
 }
 
-bool ofxAndroidSoundStream::setup(ofBaseApp * app, int outChannels, int inChannels, int sampleRate, int bufferSize, int nBuffers){
-	// Set audio I/O callback classes
-	if(inChannels > 0)  setInput(app);
-	if(outChannels > 0) setOutput(app);
-	// Setup audio I/O buffers
-	return setup(outChannels,inChannels,sampleRate,bufferSize,nBuffers);
-}
-
 void ofxAndroidSoundStream::start(){
 	if(isPaused){
 		resume();
 	}else{
-		setup(out_float_buffer.getNumChannels(),in_float_buffer.getNumChannels(),out_float_buffer.getSampleRate(),requestedBufferSize,1);
+		setup(settings);
 	}
 }
 
@@ -176,7 +167,7 @@ void ofxAndroidSoundStream::close(){
 		ofLogError("ofxAndroidSoundStream") << "close(): couldn't get OFAndroidSoundStream instance or stop method";
 }
 
-long unsigned long ofxAndroidSoundStream::getTickCount() const{
+uint64_t ofxAndroidSoundStream::getTickCount() const{
 	return tickCount;
 }
 
@@ -209,7 +200,7 @@ static const float conv_factor = 1/32767.5f;
 
 int ofxAndroidSoundStream::androidInputAudioCallback(JNIEnv*  env, jobject  thiz,jshortArray array, jint numChannels, jint bufferSize){
 
-	if(!soundInputPtr || isPaused){
+	if(!settings.inCallback || isPaused){
 		return 0;
 	}
 
@@ -221,7 +212,6 @@ int ofxAndroidSoundStream::androidInputAudioCallback(JNIEnv*  env, jobject  thiz
 	// then: free/reallocate 'out_float_buffer' accordingly
 	if(in_float_buffer.size() != numChannels * bufferSize){
 		in_float_buffer.allocate(bufferSize,numChannels);
-
 		ofLogNotice("ofxAndroidSoundStream") << "setting input buffers frames to: " << bufferSize;		
 	} // */
 
@@ -240,7 +230,7 @@ int ofxAndroidSoundStream::androidInputAudioCallback(JNIEnv*  env, jobject  thiz
 	}else{
 		in_float_buffer.copyFrom(in_buffer,bufferSize,numChannels,in_float_buffer.getSampleRate());
 		in_float_buffer.setTickCount(tickCount);
-		soundInputPtr->audioIn(in_float_buffer);
+        settings.inCallback(in_float_buffer);
 	}
 
 	// 3) Release critical JNI
@@ -251,7 +241,9 @@ int ofxAndroidSoundStream::androidInputAudioCallback(JNIEnv*  env, jobject  thiz
 
 int ofxAndroidSoundStream::androidOutputAudioCallback(JNIEnv*  env, jobject  thiz,jshortArray array, jint numChannels, jint bufferSize){
 
-	if((!soundOutputPtr && !soundInputPtr) || isPaused) return 0;
+	if((!settings.outCallback && !settings.inCallback) || isPaused){
+        return 0;
+    }
 
 	// --- Handle OUTPUT buffer size changes ---
 	// if our 'out_float_buffer' (used by the OF audio output callback) is not allocated
@@ -260,29 +252,30 @@ int ofxAndroidSoundStream::androidOutputAudioCallback(JNIEnv*  env, jobject  thi
 	// then: free/reallocate 'out_float_buffer' accordingly
 	if(out_float_buffer.size()!=bufferSize*numChannels){
 		out_float_buffer.allocate(bufferSize,numChannels);
-
 		ofLogNotice("ofxAndroidSoundStream") << "setting out buffers frames to: " << bufferSize;		
 	}
 
    	// First, the "sound input" circular buffer is handled into our "sound output" function.
 	//  (minimizing latency in full-duplex, see: http://www.portaudio.com/docs/v19-doxydocs/pa__process_8h.html )
-	if(soundInputPtr && in_float_buffer.getNumChannels()>0){
+	if(settings.inCallback && in_float_buffer.getNumChannels()>0){
 		for(size_t i=0;i<in_float_buffer.size();i++){
 			in_float_buffer[i] = input_buffer.read(0);
 		}
 		in_float_buffer.setTickCount(tickCount);
-		soundInputPtr->audioIn(in_float_buffer);
+        settings.inCallback(in_float_buffer);
 	}
 
 	// 1) Get critical JNI buffer access
-	if(soundOutputPtr){
+	if(settings.outCallback){
 		out_buffer = (short*)env->GetPrimitiveArrayCritical(array, NULL);
-		if(!out_buffer) return 1;
+		if(!out_buffer){
+            return 1;
+        }
 
 		// Call the ofApp soundOutput() Callback so that 'out_float_buffer' gets filled
 		out_float_buffer.set(0);
 		out_float_buffer.setTickCount(tickCount);
-		soundOutputPtr->audioOut(out_float_buffer);
+        settings.outCallback(out_float_buffer);
 		out_float_buffer.toShortPCM(out_buffer);
 
 		// 3) Release critical JNI: now that the JNI output buffer has been populated, release it ASAP
@@ -337,6 +330,8 @@ jint
 Java_cc_openframeworks_OFAndroidSoundStream_audioOut(JNIEnv*  env, jobject  thiz, jshortArray array, jint numChannels, jint bufferSize){
 	if(instance){
 		return instance->androidOutputAudioCallback(env,thiz,array,numChannels,bufferSize);
+	}else{
+		ofLogError("Java_cc_openframeworks_OFAndroidSoundStream_audioOut") << "No instance";
 	}
 	return 0;
 }
@@ -346,6 +341,8 @@ jint
 Java_cc_openframeworks_OFAndroidSoundStream_audioIn(JNIEnv*  env, jobject  thiz, jshortArray array, jint numChannels, jint bufferSize){
 	if(instance){
 		return instance->androidInputAudioCallback(env,thiz,array,numChannels,bufferSize);
+	}else{
+		ofLogError("Java_cc_openframeworks_OFAndroidSoundStream_audioIn") << "No instance";
 	}
 	return 0;
 }

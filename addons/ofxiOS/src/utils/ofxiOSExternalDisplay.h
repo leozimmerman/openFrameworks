@@ -9,6 +9,9 @@
 
 #include "ofConstants.h"
 
+#include <TargetConditionals.h>
+#if TARGET_OS_IOS || (TARGET_OS_IPHONE && !TARGET_OS_TV)
+
 struct ofxiOSExternalDisplayMode{
     int width;
     int height;
@@ -25,7 +28,7 @@ public:
     static void alertExternalDisplayChanged();
     
     //-------------------------------------------------------
-    static vector<ofxiOSExternalDisplayMode> getExternalDisplayModes();
+    static std::vector<ofxiOSExternalDisplayMode> getExternalDisplayModes();
     static bool displayOnExternalScreen(ofxiOSExternalDisplayMode externalDisplayMode);
     static bool displayOnExternalScreenWithPreferredDisplayMode();
     static bool displayOnDeviceScreen();
@@ -50,3 +53,5 @@ public:
 };
 
 #define ofxiPhoneExternalDisplay ofxiOSExternalDisplay
+
+#endif
